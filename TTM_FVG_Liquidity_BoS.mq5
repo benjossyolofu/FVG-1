@@ -75,9 +75,16 @@ string DirectionText(const int direction)
    return direction == DIR_BULL ? "BUY" : "SELL";
 }
 
+string TimeId(const datetime value)
+{
+   MqlDateTime dt;
+   TimeToStruct(value, dt);
+   return StringFormat("%04d%02d%02d%02d%02d", dt.year, dt.mon, dt.day, dt.hour, dt.min);
+}
+
 string SetupId(const TTMSetup &setup)
 {
-   return PREFIX + _Symbol + "_" + IntegerToString((int)_Period) + "_" + IntegerToString(setup.direction) + "_" + TimeToString(setup.fvgTime, TIME_DATE | TIME_MINUTES);
+   return PREFIX + _Symbol + "_" + IntegerToString((int)_Period) + "_" + IntegerToString(setup.direction) + "_" + TimeId(setup.fvgTime);
 }
 
 bool IsBullishFVG(const int i, const double &high[], const double &low[])
@@ -398,13 +405,13 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
 
    DrawRectangle(id + "_FVG", setup.fvgTime, endTime, setup.fvgTop, setup.fvgBottom, zoneColor);
    DrawTrendLine(id + "_LIQ", setup.liquidityTime, endTime, setup.liquidityPrice, lineColor);
-   DrawText(id + "_LIQ_TXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", lineColor);
-   DrawText(id + "_BOS", setup.bosTime, setup.bosPrice, "BoS", lineColor);
+   DrawText(id + "_LIQ_TXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", InpTextColor);
+   DrawText(id + "_BOS", setup.bosTime, setup.bosPrice, "BoS", InpTextColor);
 
    if(setup.hasEntry)
    {
       DrawArrow(id + "_ENTRY", setup.entryTime, setup.entryPrice, setup.direction);
-      DrawText(id + "_ENTRY_TXT", setup.entryTime, setup.entryPrice, DirectionText(setup.direction), lineColor);
+      DrawText(id + "_ENTRY_TXT", setup.entryTime, setup.entryPrice, DirectionText(setup.direction), InpTextColor);
 
       if(InpShowSLTPBE)
       {
