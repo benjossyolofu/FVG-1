@@ -8,6 +8,13 @@
 #define DIR_BULL 1
 #define DIR_BEAR -1
 
+enum ENUM_TTM_SL_MODE
+{
+   SL_DEEPEST_FVG_WICK = 0,
+   SL_FVG_BOUNDARY = 1,
+   SL_LIQUIDITY_LEVEL = 2
+};
+
 input int InpMaxBarsToScan = 1000;
 input bool InpShowBullishSetups = true;
 input bool InpShowBearishSetups = true;
@@ -29,6 +36,8 @@ input bool InpEnableEmailAlert = false;
 input bool InpEnableSoundAlert = true;
 input string InpSoundFile = "alert.wav";
 input bool InpShowSLTPBE = true;
+input bool InpShowTradeInfoLabel = true;
+input ENUM_TTM_SL_MODE InpStopLossMode = SL_DEEPEST_FVG_WICK;
 input double InpRiskReward = 3.0;
 input double InpBreakEvenRR = 1.5;
 input int InpSLBufferPoints = 20;
@@ -151,6 +160,28 @@ bool IsFVGUntappedAfter(const int direction, const int fvgIndex, const int until
          return false;
    }
    return true;
+}
+
+double StopLossPrice(const TTMSetup &setup, const double deepestRetrace)
+{
+   double buffer = InpSLBufferPoints * PointValue();
+
+   if(setup.direction == DIR_BULL)
+   {
+      if(InpStopLossMode == SL_FVG_BOUNDARY)
+         return setup.fvgBottom - buffer;
+      if(InpStopLossMode == SL_LIQUIDITY_LEVEL)
+         return setup.liquidityPrice - buffer;
+
+      return deepestRetrace - buffer;
+   }
+
+   if(InpStopLossMode == SL_FVG_BOUNDARY)
+      return setup.fvgTop + buffer;
+   if(InpStopLossMode == SL_LIQUIDITY_LEVEL)
+      return setup.liquidityPrice + buffer;
+
+   return deepestRetrace + buffer;
 }
 
 bool IsSwingLow(const int i, const int depth, const double &low[], const int rates_total)
@@ -298,8 +329,13 @@ void FindEntry(TTMSetup &setup, const double &open[], const double &high[], cons
          {
             setup.entryTime = time[i];
             setup.entryPrice = close[i];
-            setup.slPrice = (deepestRetrace == DBL_MAX ? setup.fvgBottom : deepestRetrace) - InpSLBufferPoints * PointValue();
+            setup.slPrice = StopLossPrice(setup, deepestRetrace == DBL_MAX ? setup.fvgBottom : deepestRetrace);
             double risk = setup.entryPrice - setup.slPrice;
+            if(risk <= 0.0)
+            {
+               setup.invalidated = true;
+               return;
+            }
             setup.bePrice = setup.entryPrice + risk * InpBreakEvenRR;
             setup.tpPrice = setup.entryPrice + risk * InpRiskReward;
             setup.hasEntry = true;
@@ -318,8 +354,13 @@ void FindEntry(TTMSetup &setup, const double &open[], const double &high[], cons
          {
             setup.entryTime = time[i];
             setup.entryPrice = close[i];
-            setup.slPrice = (deepestRetrace == -DBL_MAX ? setup.fvgTop : deepestRetrace) + InpSLBufferPoints * PointValue();
+            setup.slPrice = StopLossPrice(setup, deepestRetrace == -DBL_MAX ? setup.fvgTop : deepestRetrace);
             double risk = setup.slPrice - setup.entryPrice;
+            if(risk <= 0.0)
+            {
+               setup.invalidated = true;
+               return;
+            }
             setup.bePrice = setup.entryPrice - risk * InpBreakEvenRR;
             setup.tpPrice = setup.entryPrice - risk * InpRiskReward;
             setup.hasEntry = true;
@@ -414,6 +455,17 @@ void DrawArrow(const string name, const datetime t, const double price, const in
    SetObjectCommon(name);
 }
 
+string TradeInfoText(const TTMSetup &setup)
+{
+   double riskPoints = MathAbs(setup.entryPrice - setup.slPrice) / PointValue();
+   return DirectionText(setup.direction) +
+          " Entry: " + DoubleToString(setup.entryPrice, _Digits) +
+          " | SL: " + DoubleToString(setup.slPrice, _Digits) +
+          " | BE: " + DoubleToString(setup.bePrice, _Digits) +
+          " | TP: " + DoubleToString(setup.tpPrice, _Digits) +
+          " | Risk: " + DoubleToString(riskPoints, 1) + " pts";
+}
+
 void SendTTMAlert(const string message)
 {
    if(InpEnablePopupAlert)
@@ -486,6 +538,9 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
          DrawText(id + "_BE_TXT", setup.entryTime, setup.bePrice, "BE", clrGold);
          DrawText(id + "_TP_TXT", setup.entryTime, setup.tpPrice, "TP 1:" + DoubleToString(InpRiskReward, 1), clrLime);
       }
+
+      if(InpShowTradeInfoLabel)
+         DrawText(id + "_INFO", setup.entryTime, setup.entryPrice, TradeInfoText(setup), InpTextColor);
    }
 }
 
