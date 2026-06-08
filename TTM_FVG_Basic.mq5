@@ -39,6 +39,9 @@ struct BasicFVG
 BasicFVG g_fvgs[];
 int g_fvgCandidates = 0;
 int g_fvgDisplayed = 0;
+int g_objectsCreated = 0;
+int g_objectCreateFailures = 0;
+int g_lastObjectError = 0;
 
 double PointValue()
 {
@@ -105,10 +108,30 @@ void DeleteObjects()
 void SetObjectCommon(const string name)
 {
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 100);
 }
 
+bool CreateObjectChecked(const string name, const ENUM_OBJECT type, const datetime t1, const double p1, const datetime t2 = 0, const double p2 = 0.0)
+{
+   ResetLastError();
+   bool created = false;
+
+   if(type == OBJ_RECTANGLE || type == OBJ_TREND)
+      created = ObjectCreate(0, name, type, 0, t1, p1, t2, p2);
+   else
+      created = ObjectCreate(0, name, type, 0, t1, p1);
+
+   if(created)
+   {
+      g_objectsCreated++;
+      return true;
+   }
+
+   g_objectCreateFailures++;
+   g_lastObjectError = GetLastError();
+   return false;
+}
 void DrawRectangle(const string name, const datetime t1, const datetime t2, const double top, const double bottom, const color clr)
 {
    datetime leftTime = t1 < t2 ? t1 : t2;
@@ -117,7 +140,7 @@ void DrawRectangle(const string name, const datetime t1, const datetime t2, cons
    double lowPrice = top > bottom ? bottom : top;
 
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_RECTANGLE, 0, leftTime, highPrice, rightTime, lowPrice);
+      CreateObjectChecked(name, OBJ_RECTANGLE, leftTime, highPrice, rightTime, lowPrice);
    else
    {
       ObjectMove(0, name, 0, leftTime, highPrice);
@@ -137,7 +160,7 @@ void DrawLine(const string name, const datetime t1, const datetime t2, const dou
    datetime rightTime = t1 < t2 ? t2 : t1;
 
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_TREND, 0, leftTime, price, rightTime, price);
+      CreateObjectChecked(name, OBJ_TREND, leftTime, price, rightTime, price);
    else
    {
       ObjectMove(0, name, 0, leftTime, price);
@@ -153,7 +176,7 @@ void DrawLine(const string name, const datetime t1, const datetime t2, const dou
 void DrawMarker(const string name, const datetime t, const double price, const color clr)
 {
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_ARROW, 0, t, price);
+      CreateObjectChecked(name, OBJ_ARROW, t, price);
    else
       ObjectMove(0, name, 0, t, price);
 
@@ -178,7 +201,7 @@ void DisplayBounds(const double top, const double bottom, double &displayTop, do
 void DrawText(const string name, const datetime t, const double price, const string text, const color clr)
 {
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
+      CreateObjectChecked(name, OBJ_TEXT, t, price);
    else
       ObjectMove(0, name, 0, t, price);
 
@@ -192,7 +215,7 @@ void DrawText(const string name, const datetime t, const double price, const str
 void DrawLabel(const string name, const int x, const int y, const string text, const color clr)
 {
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      CreateObjectChecked(name, OBJ_LABEL, 0, 0.0);
 
    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
@@ -209,6 +232,9 @@ void DrawDiagnosticsPanel()
    DrawLabel(PREFIX + "DIAG_TITLE", 12, 20, "TTM FVG Basic", InpTextColor);
    DrawLabel(PREFIX + "DIAG_CANDIDATES", 12, 38, "FVG candidates: " + IntegerToString(g_fvgCandidates), InpTextColor);
    DrawLabel(PREFIX + "DIAG_DISPLAYED", 12, 56, "Displayed FVGs: " + IntegerToString(g_fvgDisplayed), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_OBJECTS", 12, 74, "Objects created: " + IntegerToString(g_objectsCreated), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_FAILURES", 12, 92, "Create failures: " + IntegerToString(g_objectCreateFailures), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_ERROR", 12, 110, "Last object error: " + IntegerToString(g_lastObjectError), InpTextColor);
 }
 
 void AddFVG(const BasicFVG &fvg)
@@ -307,6 +333,9 @@ void DrawFVG(const BasicFVG &fvg)
 void DrawAllFVGs()
 {
    DeleteObjects();
+   g_objectsCreated = 0;
+   g_objectCreateFailures = 0;
+   g_lastObjectError = 0;
 
    for(int i = 0; i < ArraySize(g_fvgs); i++)
       DrawFVG(g_fvgs[i]);
@@ -318,6 +347,7 @@ void DrawAllFVGs()
 int OnInit()
 {
    IndicatorSetString(INDICATOR_SHORTNAME, "TTM FVG Basic");
+   ChartSetInteger(0, CHART_FOREGROUND, false);
    ArrayResize(g_fvgs, 0);
    DeleteObjects();
    return INIT_SUCCEEDED;
