@@ -69,6 +69,8 @@ struct TTMSetup
 
 TTMSetup g_setups[];
 datetime g_lastClosedBarTime = 0;
+string g_setupAlertIds[];
+string g_entryAlertIds[];
 
 double PointValue()
 {
@@ -401,6 +403,33 @@ void SendTTMAlert(const string message)
       PlaySound(InpSoundFile);
 }
 
+bool HasAlerted(const string &ids[], const string id)
+{
+   int total = ArraySize(ids);
+   for(int i = 0; i < total; i++)
+   {
+      if(ids[i] == id)
+         return true;
+   }
+   return false;
+}
+
+void MarkAlerted(string &ids[], const string id)
+{
+   int total = ArraySize(ids);
+   ArrayResize(ids, total + 1);
+   ids[total] = id;
+}
+
+void SendOneTimeAlert(string &ids[], const string id, const string message)
+{
+   if(HasAlerted(ids, id))
+      return;
+
+   SendTTMAlert(message);
+   MarkAlerted(ids, id);
+}
+
 void DrawSetup(const TTMSetup &setup, const datetime lastTime)
 {
    string id = SetupId(setup);
@@ -510,11 +539,11 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
 
          string setupMessage = _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) + " TTM A+ " + DirectionText(direction) + " setup formed";
          if(InpAlertOnSetupFormed && setup.bosIndex == 1)
-            SendTTMAlert(setupMessage);
+            SendOneTimeAlert(g_setupAlertIds, SetupId(setup) + "_SETUP", setupMessage);
 
          string entryMessage = _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) + " TTM " + DirectionText(direction) + " entry trigger";
          if(InpAlertOnEntryTrigger && setup.hasEntry && setup.entryTime == time[1])
-            SendTTMAlert(entryMessage);
+            SendOneTimeAlert(g_entryAlertIds, SetupId(setup) + "_ENTRY", entryMessage);
       }
    }
 }
@@ -523,6 +552,8 @@ int OnInit()
 {
    IndicatorSetString(INDICATOR_SHORTNAME, "TTM FVG Liquidity BoS");
    ArrayResize(g_setups, 0);
+   ArrayResize(g_setupAlertIds, 0);
+   ArrayResize(g_entryAlertIds, 0);
    DeleteObjects();
    return INIT_SUCCEEDED;
 }
@@ -549,6 +580,8 @@ int OnCalculate(const int rates_total,
    if(prev_calculated == 0)
    {
       ArrayResize(g_setups, 0);
+      ArrayResize(g_setupAlertIds, 0);
+      ArrayResize(g_entryAlertIds, 0);
       DeleteObjects();
       ScanSetups(rates_total, time, open, high, low, close);
       g_lastClosedBarTime = time[1];
