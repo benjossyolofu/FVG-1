@@ -17,10 +17,12 @@ input bool InpExtendUntouchedToCurrentBar = false;
 input bool InpShowInvalidatedFVGs = true;
 input bool InpShowStatusText = true;
 input bool InpShowDiagnosticsPanel = true;
+input bool InpDrawTestBox = true;
 input bool InpInvalidateOnCloseInside = true;
 input color InpBullishFVGColor = clrDeepSkyBlue;
 input color InpBearishFVGColor = clrMagenta;
-input color InpInvalidatedFVGColor = clrDimGray;
+input color InpInvalidatedFVGColor = clrOrange;
+input color InpTestBoxColor = clrYellow;
 input color InpTextColor = clrWhite;
 
 struct BasicFVG
@@ -237,6 +239,27 @@ void DrawDiagnosticsPanel()
    DrawLabel(PREFIX + "DIAG_ERROR", 12, 110, "Last object error: " + IntegerToString(g_lastObjectError), InpTextColor);
 }
 
+void DrawTestBox(const datetime &time[], const double &high[], const double &low[], const int rates_total)
+{
+   if(!InpDrawTestBox || rates_total < 25)
+      return;
+
+   double visibleHigh = high[1];
+   double visibleLow = low[1];
+   for(int i = 2; i <= 24 && i < rates_total; i++)
+   {
+      visibleHigh = MathMax(visibleHigh, high[i]);
+      visibleLow = MathMin(visibleLow, low[i]);
+   }
+
+   double boxHeight = MathMax((visibleHigh - visibleLow) * 0.12, InpMinVisualHeightPoints * PointValue());
+   double middle = (visibleHigh + visibleLow) / 2.0;
+   datetime leftTime = time[MathMin(20, rates_total - 1)];
+   datetime rightTime = time[1];
+
+   DrawRectangle(PREFIX + "TEST_RECT", leftTime, rightTime, middle + boxHeight, middle, InpTestBoxColor);
+   DrawText(PREFIX + "TEST_TEXT", leftTime, middle + boxHeight, "TEST BOX", InpTextColor);
+}
 void AddFVG(const BasicFVG &fvg)
 {
    int total = ArraySize(g_fvgs);
@@ -330,7 +353,7 @@ void DrawFVG(const BasicFVG &fvg)
       DrawText(id + "_TEXT", fvg.labelTime, labelPrice, directionText + " FVG - " + statusText, InpTextColor);
 }
 
-void DrawAllFVGs()
+void DrawAllFVGs(const datetime &time[], const double &high[], const double &low[], const int rates_total)
 {
    DeleteObjects();
    g_objectsCreated = 0;
@@ -340,8 +363,12 @@ void DrawAllFVGs()
    for(int i = 0; i < ArraySize(g_fvgs); i++)
       DrawFVG(g_fvgs[i]);
 
+   DrawTestBox(time, high, low, rates_total);
+
    if(InpShowDiagnosticsPanel)
       DrawDiagnosticsPanel();
+
+   ChartRedraw(0);
 }
 
 int OnInit()
@@ -373,7 +400,7 @@ int OnCalculate(const int rates_total,
       return 0;
 
    ScanFVGs(rates_total, time, high, low, close);
-   DrawAllFVGs();
+   DrawAllFVGs(time, high, low, rates_total);
 
    return rates_total;
 }
