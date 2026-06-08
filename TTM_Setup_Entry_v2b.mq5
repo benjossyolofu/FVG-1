@@ -8,10 +8,10 @@
 #define DIR_BULL 1
 #define DIR_BEAR -1
 
-input int MaxBarsToScan = 3000;
+input int MaxBarsToScan = 2000;
 input int MaxSetupsToDisplay = 20;
 input int MinFvgSizePoints = 1;
-input int RectangleLengthBars = 200;
+input int RectangleLengthBars = 120;
 input int SwingStrength = 2;
 input int MinLiquidityCandles = 2;
 input bool InvalidateOnCloseInside = true;
@@ -261,6 +261,18 @@ void DrawText(const string name, const datetime textTime, const double price, co
    SetObjectCommon(name);
 }
 
+void DrawSmallText(const string name, const datetime textTime, const double price, const string text, const color textColor)
+{
+   if(!CreateObjectChecked(name, OBJ_TEXT, textTime, price))
+      return;
+
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 7);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   SetObjectCommon(name);
+}
+
 void DrawArrow(const string name, const datetime arrowTime, const double price, const int direction, const color arrowColor)
 {
    if(!CreateObjectChecked(name, OBJ_ARROW, arrowTime, price))
@@ -474,20 +486,21 @@ void DrawSetup(const TTMSetup &setup)
 {
    string id = SetupId(setup);
    color fvgColor = setup.direction == DIR_BULL ? BullishFvgColor : BearishFvgColor;
-   string directionText = DirectionText(setup.direction);
+   string fvgText = setup.direction == DIR_BULL ? "BULLISH FVG" : "BEARISH FVG";
+   string entryText = setup.direction == DIR_BULL ? "TTM BUY" : "TTM SELL";
 
    DrawRectangle(id + "_FVG", setup.fvgStartTime, setup.fvgEndTime, setup.fvgTop, setup.fvgBottom, fvgColor);
    DrawLine(id + "_LIQ", setup.liquidityTime, setup.bosTime, setup.liquidityPrice, LiquidityColor);
    DrawLine(id + "_BOS_LEVEL", setup.liquidityTime, setup.bosTime, setup.breakPrice, BosColor);
    DrawText(id + "_LIQ_TEXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", LiquidityColor);
-   DrawText(id + "_BOS_TEXT", setup.bosTime, setup.breakPrice, directionText + " BoS", BosColor);
-   DrawText(id + "_SETUP_TEXT", setup.bosTime, (setup.fvgTop + setup.fvgBottom) / 2.0, directionText + " TTM Setup", TextColor);
+   DrawText(id + "_BOS_TEXT", setup.bosTime, setup.breakPrice, "BOS", BosColor);
+   DrawSmallText(id + "_SETUP_TEXT", setup.bosTime, (setup.fvgTop + setup.fvgBottom) / 2.0, fvgText, TextColor);
 
    if(setup.entryTriggered)
    {
       color entryColor = setup.direction == DIR_BULL ? BullishEntryColor : BearishEntryColor;
       DrawArrow(id + "_ENTRY_ARROW", setup.entryTime, setup.entryPrice, setup.direction, entryColor);
-      DrawText(id + "_ENTRY_TEXT", setup.entryTime, setup.entryPrice, directionText + " Entry", entryColor);
+      DrawText(id + "_ENTRY_TEXT", setup.entryTime, setup.entryPrice, entryText, entryColor);
    }
 }
 
