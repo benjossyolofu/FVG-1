@@ -15,6 +15,14 @@ enum ENUM_TTM_SL_MODE
    SL_LIQUIDITY_LEVEL = 2
 };
 
+enum ENUM_TTM_DISPLAY_MODE
+{
+   DISPLAY_FVG_ONLY = 0,
+   DISPLAY_FVG_AND_LIQUIDITY = 1,
+   DISPLAY_BOS_CONFIRMED = 2,
+   DISPLAY_ENTRY_CONFIRMED = 3
+};
+
 input int InpMaxBarsToScan = 1000;
 input bool InpShowBullishSetups = true;
 input bool InpShowBearishSetups = true;
@@ -51,6 +59,8 @@ input bool InpShowLiquidityLines = true;
 input bool InpShowBoSLabels = true;
 input bool InpShowEntryMarkers = true;
 input bool InpShowLatestSetupOnly = false;
+input ENUM_TTM_DISPLAY_MODE InpHistoricalDisplayMode = DISPLAY_BOS_CONFIRMED;
+input bool InpShowDiagnosticsPanel = true;
 input int InpMaxDisplayedSetups = 20;
 input int InpMaxStoredSetups = 100;
 
@@ -85,6 +95,11 @@ TTMSetup g_setups[];
 datetime g_lastClosedBarTime = 0;
 string g_setupAlertIds[];
 string g_entryAlertIds[];
+int g_fvgCandidates = 0;
+int g_fvgAfterFilters = 0;
+int g_liquidityMatches = 0;
+int g_bosMatches = 0;
+int g_entryMatches = 0;
 
 double PointValue()
 {
@@ -457,6 +472,21 @@ void DrawText(const string name, const datetime t, const double price, const str
    SetObjectCommon(name);
 }
 
+void DrawLabel(const string name, const int x, const int y, const string text, const color clr)
+{
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   SetObjectCommon(name);
+}
+
 void DrawArrow(const string name, const datetime t, const double price, const int direction)
 {
    if(ObjectFind(0, name) < 0)
@@ -530,13 +560,13 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
    if(InpShowFVGZones)
       DrawRectangle(id + "_FVG", setup.fvgTime, endTime, setup.fvgTop, setup.fvgBottom, zoneColor);
 
-   if(InpShowLiquidityLines)
+   if(setup.hasLiquidity && InpShowLiquidityLines)
    {
       DrawTrendLine(id + "_LIQ", setup.liquidityTime, endTime, setup.liquidityPrice, lineColor);
       DrawText(id + "_LIQ_TXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", InpTextColor);
    }
 
-   if(InpShowBoSLabels)
+   if(setup.hasBoS && InpShowBoSLabels)
       DrawText(id + "_BOS", setup.bosTime, setup.bosPrice, "BoS", InpTextColor);
 
    if(setup.hasEntry && InpShowEntryMarkers)
@@ -557,6 +587,18 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
       if(InpShowTradeInfoLabel)
          DrawText(id + "_INFO", setup.entryTime, setup.entryPrice, TradeInfoText(setup), InpTextColor);
    }
+}
+
+bool SetupDisplayAllowed(const TTMSetup &setup)
+{
+   if(InpHistoricalDisplayMode == DISPLAY_FVG_ONLY)
+      return true;
+   if(InpHistoricalDisplayMode == DISPLAY_FVG_AND_LIQUIDITY)
+      return setup.hasLiquidity;
+   if(InpHistoricalDisplayMode == DISPLAY_BOS_CONFIRMED)
+      return setup.hasBoS;
+
+   return setup.hasEntry;
 }
 
 int FirstDisplayedSetupIndex()
@@ -588,11 +630,32 @@ void RedrawVisibleSetups(const datetime lastTime, const bool cleanFirst)
       DeleteObjects();
 
    for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
-      DrawSetup(g_setups[i], lastTime);
+   {
+      if(SetupDisplayAllowed(g_setups[i]))
+         DrawSetup(g_setups[i], lastTime);
+   }
+
+   if(InpShowDiagnosticsPanel)
+   {
+      string text = "TTM FVG Liquidity BoS" +
+                    "\nFVG candidates: " + IntegerToString(g_fvgCandidates) +
+                    "\nFVG after filters: " + IntegerToString(g_fvgAfterFilters) +
+                    "\nLiquidity matches: " + IntegerToString(g_liquidityMatches) +
+                    "\nBoS matches: " + IntegerToString(g_bosMatches) +
+                    "\nEntry matches: " + IntegerToString(g_entryMatches) +
+                    "\nStored setups: " + IntegerToString(ArraySize(g_setups));
+      DrawLabel(PREFIX + "DIAGNOSTICS", 12, 20, text, InpTextColor);
+   }
 }
 
 void ScanSetups(const int rates_total, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[])
 {
+   g_fvgCandidates = 0;
+   g_fvgAfterFilters = 0;
+   g_liquidityMatches = 0;
+   g_bosMatches = 0;
+   g_entryMatches = 0;
+
    int maxBars = MathMin(InpMaxBarsToScan, rates_total - InpSwingDepth - 5);
    if(maxBars < InpSwingDepth + 5)
       return;
@@ -618,8 +681,15 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
          bottom = high[i - 2];
       }
 
-      if(direction == 0 || !FVGSizeOk(top, bottom) || !ImpulseCandleOk(direction, i - 1, open, high, low, close) || SetupExists(time[i], direction))
+      if(direction == 0)
          continue;
+
+      g_fvgCandidates++;
+
+      if(!FVGSizeOk(top, bottom) || !ImpulseCandleOk(direction, i - 1, open, high, low, close) || SetupExists(time[i], direction))
+         continue;
+
+      g_fvgAfterFilters++;
 
       TTMSetup setup;
       ZeroMemory(setup);
@@ -630,13 +700,19 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
       setup.fvgBottom = bottom;
       setup.fvgIndex = i;
 
-      if(!FindLiquidity(setup, rates_total, high, low, close, time))
-         continue;
+      FindLiquidity(setup, rates_total, high, low, close, time);
+      if(setup.hasLiquidity)
+         g_liquidityMatches++;
 
-      if(!FindBoS(setup, high, low, close, time))
-         continue;
+      if(setup.hasLiquidity)
+         FindBoS(setup, high, low, close, time);
+      if(setup.hasBoS)
+         g_bosMatches++;
 
-      FindEntry(setup, open, high, low, close, time);
+      if(setup.hasBoS)
+         FindEntry(setup, open, high, low, close, time);
+      if(setup.hasEntry)
+         g_entryMatches++;
 
       if(!setup.invalidated)
       {
