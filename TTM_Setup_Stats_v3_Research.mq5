@@ -15,6 +15,9 @@ input int RectangleLengthBars = 70;
 input int RRBarLengthBars = 70;
 input int StatsForwardBars = 500;
 input int SLBufferPoints = 20;
+input bool UseBreakEven = true;
+input double BreakEvenRR = 1.5;
+input int BreakEvenOffsetPoints = 0;
 input int SwingStrength = 2;
 input int MinLiquidityCandles = 2;
 input bool InvalidateOnCloseInside = true;
@@ -36,6 +39,7 @@ input color RiskColor = clrRed;
 input color RR1Color = clrDarkGreen;
 input color RR2Color = clrGreen;
 input color RR3Color = clrLimeGreen;
+input color BreakEvenColor = clrAqua;
 input color TextColor = clrWhite;
 
 struct TTMSetup
@@ -54,14 +58,20 @@ struct TTMSetup
    double entryPrice;
    double slPrice;
    double tp1Price;
+   double beTriggerPrice;
+   double beStopPrice;
    double tp2Price;
    double tp3Price;
    bool returnedToFvg;
    bool entryTriggered;
    bool hitSL;
    bool hit1R;
+   bool hitBE;
    bool hit2R;
    bool hit3R;
+   bool finalSL;
+   bool finalBE;
+   bool finalTP3;
 };
 
 TTMSetup g_setups[];
@@ -72,8 +82,12 @@ int g_returnedToFvg = 0;
 int g_entryTriggered = 0;
 int g_hitSL = 0;
 int g_hit1R = 0;
+int g_hitBE = 0;
 int g_hit2R = 0;
 int g_hit3R = 0;
+int g_finalSL = 0;
+int g_finalBE = 0;
+int g_finalTP3 = 0;
 int g_openUnknown = 0;
 int g_setupsDisplayed = 0;
 int g_objectsCreated = 0;
@@ -376,14 +390,20 @@ bool FindEntryAfterBoS(const int bosShift, const int direction, const double fvg
    return false;
 }
 
-void CalculateRROutcome(const int bosShift, const int direction, const double fvgTop, const double fvgBottom, const datetime entryTime, const double entryPrice, const int rates_total, const datetime &time[], const double &high[], const double &low[], double &slPrice, double &tp1Price, double &tp2Price, double &tp3Price, datetime &rrEndTime, bool &hitSL, bool &hit1R, bool &hit2R, bool &hit3R)
+void CalculateRROutcome(const int bosShift, const int direction, const double fvgTop, const double fvgBottom, const datetime entryTime, const double entryPrice, const int rates_total, const datetime &time[], const double &high[], const double &low[], double &slPrice, double &tp1Price, double &beTriggerPrice, double &beStopPrice, double &tp2Price, double &tp3Price, datetime &rrEndTime, bool &hitSL, bool &hit1R, bool &hitBE, bool &hit2R, bool &hit3R, bool &finalSL, bool &finalBE, bool &finalTP3)
 {
    int entryShift = -1;
    double buffer = SLBufferPoints * PointValue();
+   double beOffset = BreakEvenOffsetPoints * PointValue();
+   bool beActive = false;
    hitSL = false;
    hit1R = false;
+   hitBE = false;
    hit2R = false;
    hit3R = false;
+   finalSL = false;
+   finalBE = false;
+   finalTP3 = false;
 
    for(int shift = bosShift - 1; shift >= 1; shift--)
    {
@@ -427,12 +447,16 @@ void CalculateRROutcome(const int bosShift, const int direction, const double fv
    if(direction == DIR_BULL)
    {
       tp1Price = entryPrice + risk;
+      beTriggerPrice = entryPrice + BreakEvenRR * risk;
+      beStopPrice = entryPrice + beOffset;
       tp2Price = entryPrice + 2.0 * risk;
       tp3Price = entryPrice + 3.0 * risk;
    }
    else
    {
       tp1Price = entryPrice - risk;
+      beTriggerPrice = entryPrice - BreakEvenRR * risk;
+      beStopPrice = entryPrice - beOffset;
       tp2Price = entryPrice - 2.0 * risk;
       tp3Price = entryPrice - 3.0 * risk;
    }
@@ -448,35 +472,63 @@ void CalculateRROutcome(const int bosShift, const int direction, const double fv
 
       if(direction == DIR_BULL)
       {
-         if(low[index] <= slPrice)
+         if(!beActive && low[index] <= slPrice)
          {
             hitSL = true;
+            finalSL = true;
             return;
          }
+
+         if(beActive && low[index] <= beStopPrice)
+         {
+            finalBE = true;
+            return;
+         }
+
          if(high[index] >= tp1Price)
             hit1R = true;
+         if(UseBreakEven && high[index] >= beTriggerPrice)
+         {
+            hitBE = true;
+            beActive = true;
+         }
          if(high[index] >= tp2Price)
             hit2R = true;
          if(high[index] >= tp3Price)
          {
             hit3R = true;
+            finalTP3 = true;
             return;
          }
       }
       else
       {
-         if(high[index] >= slPrice)
+         if(!beActive && high[index] >= slPrice)
          {
             hitSL = true;
+            finalSL = true;
             return;
          }
+
+         if(beActive && high[index] >= beStopPrice)
+         {
+            finalBE = true;
+            return;
+         }
+
          if(low[index] <= tp1Price)
             hit1R = true;
+         if(UseBreakEven && low[index] <= beTriggerPrice)
+         {
+            hitBE = true;
+            beActive = true;
+         }
          if(low[index] <= tp2Price)
             hit2R = true;
          if(low[index] <= tp3Price)
          {
             hit3R = true;
+            finalTP3 = true;
             return;
          }
       }
@@ -554,8 +606,12 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
    g_entryTriggered = 0;
    g_hitSL = 0;
    g_hit1R = 0;
+   g_hitBE = 0;
    g_hit2R = 0;
    g_hit3R = 0;
+   g_finalSL = 0;
+   g_finalBE = 0;
+   g_finalTP3 = 0;
    g_openUnknown = 0;
    g_setupsDisplayed = 0;
 
@@ -620,14 +676,20 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
       setup.entryPrice = entryPrice;
       setup.slPrice = 0.0;
       setup.tp1Price = 0.0;
+      setup.beTriggerPrice = 0.0;
+      setup.beStopPrice = 0.0;
       setup.tp2Price = 0.0;
       setup.tp3Price = 0.0;
       setup.returnedToFvg = returnedToFvg;
       setup.entryTriggered = entryTriggered;
       setup.hitSL = false;
       setup.hit1R = false;
+      setup.hitBE = false;
       setup.hit2R = false;
       setup.hit3R = false;
+      setup.finalSL = false;
+      setup.finalBE = false;
+      setup.finalTP3 = false;
 
       if(entryTriggered)
       {
@@ -643,17 +705,25 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
          }
 
          if(bosShift > 0)
-            CalculateRROutcome(bosShift, direction, top, bottom, entryTime, entryPrice, rates_total, time, high, low, setup.slPrice, setup.tp1Price, setup.tp2Price, setup.tp3Price, setup.rrEndTime, setup.hitSL, setup.hit1R, setup.hit2R, setup.hit3R);
+            CalculateRROutcome(bosShift, direction, top, bottom, entryTime, entryPrice, rates_total, time, high, low, setup.slPrice, setup.tp1Price, setup.beTriggerPrice, setup.beStopPrice, setup.tp2Price, setup.tp3Price, setup.rrEndTime, setup.hitSL, setup.hit1R, setup.hitBE, setup.hit2R, setup.hit3R, setup.finalSL, setup.finalBE, setup.finalTP3);
 
          if(setup.hitSL)
             g_hitSL++;
          if(setup.hit1R)
             g_hit1R++;
+         if(setup.hitBE)
+            g_hitBE++;
          if(setup.hit2R)
             g_hit2R++;
          if(setup.hit3R)
             g_hit3R++;
-         if(!setup.hitSL && !setup.hit1R && !setup.hit2R && !setup.hit3R)
+         if(setup.finalSL)
+            g_finalSL++;
+         if(setup.finalBE)
+            g_finalBE++;
+         if(setup.finalTP3)
+            g_finalTP3++;
+         if(!setup.finalSL && !setup.finalBE && !setup.finalTP3)
             g_openUnknown++;
       }
 
@@ -683,13 +753,15 @@ void DrawSetup(const TTMSetup &setup)
       DrawArrow(id + "_ENTRY_ARROW", setup.entryTime, setup.entryPrice, setup.direction, entryColor);
       DrawText(id + "_ENTRY_TEXT", setup.entryTime, setup.entryPrice, entryText, entryColor);
 
-      if(setup.slPrice > 0.0 && setup.tp1Price > 0.0 && setup.tp2Price > 0.0 && setup.tp3Price > 0.0)
+      if(setup.slPrice > 0.0 && setup.tp1Price > 0.0 && setup.beTriggerPrice > 0.0 && setup.tp2Price > 0.0 && setup.tp3Price > 0.0)
       {
          DrawVerticalLine(id + "_RR_RISK", setup.entryTime, setup.entryPrice, setup.slPrice, RiskColor);
          DrawLine(id + "_RR_1R", setup.entryTime, setup.rrEndTime, setup.tp1Price, RR1Color);
+         DrawLine(id + "_RR_BE", setup.entryTime, setup.rrEndTime, setup.beTriggerPrice, BreakEvenColor);
          DrawLine(id + "_RR_2R", setup.entryTime, setup.rrEndTime, setup.tp2Price, RR2Color);
          DrawLine(id + "_RR_3R", setup.entryTime, setup.rrEndTime, setup.tp3Price, RR3Color);
          DrawText(id + "_RR_1R_TEXT", setup.rrEndTime, setup.tp1Price, "1:1", RR1Color);
+         DrawText(id + "_RR_BE_TEXT", setup.rrEndTime, setup.beTriggerPrice, "BE 1:1.5", BreakEvenColor);
          DrawText(id + "_RR_2R_TEXT", setup.rrEndTime, setup.tp2Price, "1:2", RR2Color);
          DrawText(id + "_RR_3R_TEXT", setup.rrEndTime, setup.tp3Price, "1:3", RR3Color);
          DrawText(id + "_RR_SL_TEXT", setup.entryTime, setup.slPrice, "SL", RiskColor);
@@ -743,13 +815,17 @@ void DrawDiagnosticsPanel()
    DrawLabel(PREFIX + "DIAG_ENTRY", 12, 110, "Entry triggers: " + IntegerToString(g_entryTriggered), TextColor);
    DrawLabel(PREFIX + "DIAG_SL", 12, 128, "Hit SL: " + IntegerToString(g_hitSL), RiskColor);
    DrawLabel(PREFIX + "DIAG_1R", 12, 146, "Hit 1:1: " + IntegerToString(g_hit1R), RR1Color);
-   DrawLabel(PREFIX + "DIAG_2R", 12, 164, "Hit 1:2: " + IntegerToString(g_hit2R), RR2Color);
-   DrawLabel(PREFIX + "DIAG_3R", 12, 182, "Hit 1:3: " + IntegerToString(g_hit3R), RR3Color);
-   DrawLabel(PREFIX + "DIAG_UNKNOWN", 12, 200, "Open/unknown: " + IntegerToString(g_openUnknown), TextColor);
-   DrawLabel(PREFIX + "DIAG_SETUPS", 12, 218, "Displayed setups: " + IntegerToString(g_setupsDisplayed), TextColor);
-   DrawLabel(PREFIX + "DIAG_OBJECTS", 12, 236, "Objects created: " + IntegerToString(g_objectsCreated), TextColor);
-   DrawLabel(PREFIX + "DIAG_FAILURES", 12, 254, "Create failures: " + IntegerToString(g_objectCreateFailures), TextColor);
-   DrawLabel(PREFIX + "DIAG_ERROR", 12, 272, "Last object error: " + IntegerToString(g_lastObjectError), TextColor);
+   DrawLabel(PREFIX + "DIAG_BE_HIT", 12, 164, "Hit BE 1:1.5: " + IntegerToString(g_hitBE), BreakEvenColor);
+   DrawLabel(PREFIX + "DIAG_2R", 12, 182, "Hit 1:2: " + IntegerToString(g_hit2R), RR2Color);
+   DrawLabel(PREFIX + "DIAG_3R", 12, 200, "Hit 1:3: " + IntegerToString(g_hit3R), RR3Color);
+   DrawLabel(PREFIX + "DIAG_FINAL_SL", 12, 218, "Final SL: " + IntegerToString(g_finalSL), RiskColor);
+   DrawLabel(PREFIX + "DIAG_FINAL_BE", 12, 236, "Final BE: " + IntegerToString(g_finalBE), BreakEvenColor);
+   DrawLabel(PREFIX + "DIAG_FINAL_TP", 12, 254, "Final TP 1:3: " + IntegerToString(g_finalTP3), RR3Color);
+   DrawLabel(PREFIX + "DIAG_UNKNOWN", 12, 272, "Open/unknown: " + IntegerToString(g_openUnknown), TextColor);
+   DrawLabel(PREFIX + "DIAG_SETUPS", 12, 290, "Displayed setups: " + IntegerToString(g_setupsDisplayed), TextColor);
+   DrawLabel(PREFIX + "DIAG_OBJECTS", 12, 308, "Objects created: " + IntegerToString(g_objectsCreated), TextColor);
+   DrawLabel(PREFIX + "DIAG_FAILURES", 12, 326, "Create failures: " + IntegerToString(g_objectCreateFailures), TextColor);
+   DrawLabel(PREFIX + "DIAG_ERROR", 12, 344, "Last object error: " + IntegerToString(g_lastObjectError), TextColor);
 }
 
 void DrawAllSetups()
