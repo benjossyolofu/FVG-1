@@ -13,7 +13,10 @@ input bool InpShowBullishSetups = true;
 input bool InpShowBearishSetups = true;
 input int InpMinFVGSizePoints = 10;
 input bool InpStrictCloseInsideInvalidatesFVG = true;
+input bool InpRequireImpulseCandle = true;
+input double InpMinImpulseBodyPercent = 50.0;
 input int InpSwingDepth = 2;
+input int InpMinBarsAfterFVGForLiquidity = 2;
 input int InpMaxBarsAfterFVGForLiquidity = 80;
 input int InpMaxBarsAfterLiquidityForBoS = 80;
 input int InpMaxBarsAfterBoSForEntry = 120;
@@ -109,6 +112,26 @@ bool FVGSizeOk(const double top, const double bottom)
    return (top - bottom) >= InpMinFVGSizePoints * PointValue();
 }
 
+bool ImpulseCandleOk(const int direction, const int middleIndex, const double &open[], const double &high[], const double &low[], const double &close[])
+{
+   if(!InpRequireImpulseCandle)
+      return true;
+
+   double candleRange = high[middleIndex] - low[middleIndex];
+   if(candleRange <= 0.0)
+      return false;
+
+   double bodySize = MathAbs(close[middleIndex] - open[middleIndex]);
+   double bodyPercent = bodySize / candleRange * 100.0;
+   if(bodyPercent < InpMinImpulseBodyPercent)
+      return false;
+
+   if(direction == DIR_BULL)
+      return close[middleIndex] > open[middleIndex];
+
+   return close[middleIndex] < open[middleIndex];
+}
+
 bool CloseInvalidatesFVG(const int direction, const double closePrice, const double top, const double bottom)
 {
    if(InpStrictCloseInsideInvalidatesFVG)
@@ -159,7 +182,7 @@ bool IsSwingHigh(const int i, const int depth, const double &high[], const int r
 bool FindLiquidity(TTMSetup &setup, const int rates_total, const double &high[], const double &low[], const double &close[], const datetime &time[])
 {
    int newestAllowed = MathMax(1 + InpSwingDepth, setup.fvgIndex - InpMaxBarsAfterFVGForLiquidity);
-   int oldestAllowed = setup.fvgIndex - 3;
+   int oldestAllowed = setup.fvgIndex - 2 - MathMax(0, InpMinBarsAfterFVGForLiquidity);
 
    for(int i = oldestAllowed; i >= newestAllowed; i--)
    {
@@ -513,7 +536,7 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
          bottom = high[i - 2];
       }
 
-      if(direction == 0 || !FVGSizeOk(top, bottom) || SetupExists(time[i], direction))
+      if(direction == 0 || !FVGSizeOk(top, bottom) || !ImpulseCandleOk(direction, i - 1, open, high, low, close) || SetupExists(time[i], direction))
          continue;
 
       TTMSetup setup;
