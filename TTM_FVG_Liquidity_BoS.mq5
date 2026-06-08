@@ -50,7 +50,9 @@ input bool InpShowFVGZones = true;
 input bool InpShowLiquidityLines = true;
 input bool InpShowBoSLabels = true;
 input bool InpShowEntryMarkers = true;
+input bool InpShowLatestSetupOnly = false;
 input int InpMaxDisplayedSetups = 20;
+input int InpMaxStoredSetups = 100;
 
 struct TTMSetup
 {
@@ -388,6 +390,19 @@ void AddSetup(const TTMSetup &setup)
    g_setups[total] = setup;
 }
 
+void TrimStoredSetups()
+{
+   int total = ArraySize(g_setups);
+   if(InpMaxStoredSetups <= 0 || total <= InpMaxStoredSetups)
+      return;
+
+   int removeCount = total - InpMaxStoredSetups;
+   for(int i = 0; i < total - removeCount; i++)
+      g_setups[i] = g_setups[i + removeCount];
+
+   ArrayResize(g_setups, InpMaxStoredSetups);
+}
+
 void SetObjectCommon(const string name)
 {
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
@@ -547,6 +562,9 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
 int FirstDisplayedSetupIndex()
 {
    int total = ArraySize(g_setups);
+   if(InpShowLatestSetupOnly && total > 0)
+      return total - 1;
+
    if(InpMaxDisplayedSetups <= 0 || total <= InpMaxDisplayedSetups)
       return 0;
 
@@ -562,6 +580,15 @@ void DeleteObjects()
       if(StringFind(name, PREFIX) == 0)
          ObjectDelete(0, name);
    }
+}
+
+void RedrawVisibleSetups(const datetime lastTime, const bool cleanFirst)
+{
+   if(cleanFirst)
+      DeleteObjects();
+
+   for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
+      DrawSetup(g_setups[i], lastTime);
 }
 
 void ScanSetups(const int rates_total, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[])
@@ -614,6 +641,7 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
       if(!setup.invalidated)
       {
          AddSetup(setup);
+         TrimStoredSetups();
 
          string setupMessage = _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) + " TTM A+ " + DirectionText(direction) + " setup formed";
          if(InpAlertOnSetupFormed && setup.bosIndex == 1)
@@ -663,8 +691,7 @@ int OnCalculate(const int rates_total,
       DeleteObjects();
       ScanSetups(rates_total, time, open, high, low, close);
       g_lastClosedBarTime = time[1];
-      for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
-         DrawSetup(g_setups[i], time[1]);
+      RedrawVisibleSetups(time[1], false);
       return rates_total;
    }
 
@@ -672,10 +699,11 @@ int OnCalculate(const int rates_total,
    {
       ScanSetups(rates_total, time, open, high, low, close);
       g_lastClosedBarTime = time[1];
+      RedrawVisibleSetups(time[1], true);
+      return rates_total;
    }
 
-   for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
-      DrawSetup(g_setups[i], time[1]);
+   RedrawVisibleSetups(time[1], false);
 
    return rates_total;
 }
