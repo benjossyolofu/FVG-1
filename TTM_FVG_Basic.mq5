@@ -106,16 +106,22 @@ void SetObjectCommon(const string name)
 {
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 100);
 }
 
 void DrawRectangle(const string name, const datetime t1, const datetime t2, const double top, const double bottom, const color clr)
 {
+   datetime leftTime = t1 < t2 ? t1 : t2;
+   datetime rightTime = t1 < t2 ? t2 : t1;
+   double highPrice = top > bottom ? top : bottom;
+   double lowPrice = top > bottom ? bottom : top;
+
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, top, t2, bottom);
+      ObjectCreate(0, name, OBJ_RECTANGLE, 0, leftTime, highPrice, rightTime, lowPrice);
    else
    {
-      ObjectMove(0, name, 0, t1, top);
-      ObjectMove(0, name, 1, t2, bottom);
+      ObjectMove(0, name, 0, leftTime, highPrice);
+      ObjectMove(0, name, 1, rightTime, lowPrice);
    }
 
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
@@ -127,12 +133,15 @@ void DrawRectangle(const string name, const datetime t1, const datetime t2, cons
 
 void DrawLine(const string name, const datetime t1, const datetime t2, const double price, const color clr)
 {
+   datetime leftTime = t1 < t2 ? t1 : t2;
+   datetime rightTime = t1 < t2 ? t2 : t1;
+
    if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_TREND, 0, t1, price, t2, price);
+      ObjectCreate(0, name, OBJ_TREND, 0, leftTime, price, rightTime, price);
    else
    {
-      ObjectMove(0, name, 0, t1, price);
-      ObjectMove(0, name, 1, t2, price);
+      ObjectMove(0, name, 0, leftTime, price);
+      ObjectMove(0, name, 1, rightTime, price);
    }
 
    ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
@@ -141,6 +150,18 @@ void DrawLine(const string name, const datetime t1, const datetime t2, const dou
    SetObjectCommon(name);
 }
 
+void DrawMarker(const string name, const datetime t, const double price, const color clr)
+{
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_ARROW, 0, t, price);
+   else
+      ObjectMove(0, name, 0, t, price);
+
+   ObjectSetInteger(0, name, OBJPROP_ARROWCODE, 159);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 3);
+   SetObjectCommon(name);
+}
 void DisplayBounds(const double top, const double bottom, double &displayTop, double &displayBottom)
 {
    displayTop = top;
@@ -277,6 +298,7 @@ void DrawFVG(const BasicFVG &fvg)
    DrawRectangle(id + "_RECT", fvg.startTime, fvg.endTime, fvg.displayTop, fvg.displayBottom, rectColor);
    DrawLine(id + "_TOP", fvg.startTime, fvg.endTime, fvg.top, rectColor);
    DrawLine(id + "_BOTTOM", fvg.startTime, fvg.endTime, fvg.bottom, rectColor);
+   DrawMarker(id + "_MARKER", fvg.labelTime, labelPrice, rectColor);
 
    if(InpShowStatusText)
       DrawText(id + "_TEXT", fvg.labelTime, labelPrice, directionText + " FVG - " + statusText, InpTextColor);
