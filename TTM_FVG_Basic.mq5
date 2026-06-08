@@ -229,6 +229,25 @@ void DrawLabel(const string name, const int x, const int y, const string text, c
    SetObjectCommon(name);
 }
 
+void DrawScreenTestBox()
+{
+   string boxName = PREFIX + "SCREEN_TEST_BOX";
+   if(ObjectFind(0, boxName) < 0)
+      CreateObjectChecked(boxName, OBJ_RECTANGLE_LABEL, 0, 0.0);
+
+   ObjectSetInteger(0, boxName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, boxName, OBJPROP_XDISTANCE, 260);
+   ObjectSetInteger(0, boxName, OBJPROP_YDISTANCE, 35);
+   ObjectSetInteger(0, boxName, OBJPROP_XSIZE, 220);
+   ObjectSetInteger(0, boxName, OBJPROP_YSIZE, 80);
+   ObjectSetInteger(0, boxName, OBJPROP_BGCOLOR, clrYellow);
+   ObjectSetInteger(0, boxName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, boxName, OBJPROP_COLOR, clrRed);
+   ObjectSetInteger(0, boxName, OBJPROP_WIDTH, 3);
+   SetObjectCommon(boxName);
+
+   DrawLabel(PREFIX + "SCREEN_TEST_TEXT", 285, 62, "SCREEN TEST BOX", clrRed);
+}
 void DrawDiagnosticsPanel()
 {
    DrawLabel(PREFIX + "DIAG_TITLE", 12, 20, "TTM FVG Basic", InpTextColor);
@@ -364,6 +383,7 @@ void DrawAllFVGs(const datetime &time[], const double &high[], const double &low
       DrawFVG(g_fvgs[i]);
 
    DrawTestBox(time, high, low, rates_total);
+   DrawScreenTestBox();
 
    if(InpShowDiagnosticsPanel)
       DrawDiagnosticsPanel();
