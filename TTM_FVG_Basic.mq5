@@ -15,6 +15,7 @@ input int InpRectangleLengthBars = 12;
 input bool InpExtendUntouchedToCurrentBar = false;
 input bool InpShowInvalidatedFVGs = true;
 input bool InpShowStatusText = true;
+input bool InpShowDiagnosticsPanel = true;
 input bool InpInvalidateOnCloseInside = true;
 input color InpBullishFVGColor = clrMediumSeaGreen;
 input color InpBearishFVGColor = clrTomato;
@@ -33,6 +34,8 @@ struct BasicFVG
 };
 
 BasicFVG g_fvgs[];
+int g_fvgCandidates = 0;
+int g_fvgDisplayed = 0;
 
 double PointValue()
 {
@@ -114,8 +117,24 @@ void DrawRectangle(const string name, const datetime t1, const datetime t2, cons
 
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_FILL, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
+   SetObjectCommon(name);
+}
+
+void DrawLine(const string name, const datetime t1, const datetime t2, const double price, const color clr)
+{
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_TREND, 0, t1, price, t2, price);
+   else
+   {
+      ObjectMove(0, name, 0, t1, price);
+      ObjectMove(0, name, 1, t2, price);
+   }
+
+   ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
    SetObjectCommon(name);
 }
 
@@ -131,6 +150,28 @@ void DrawText(const string name, const datetime t, const double price, const str
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
    SetObjectCommon(name);
+}
+
+void DrawLabel(const string name, const int x, const int y, const string text, const color clr)
+{
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   SetObjectCommon(name);
+}
+
+void DrawDiagnosticsPanel()
+{
+   DrawLabel(PREFIX + "DIAG_TITLE", 12, 20, "TTM FVG Basic", InpTextColor);
+   DrawLabel(PREFIX + "DIAG_CANDIDATES", 12, 38, "FVG candidates: " + IntegerToString(g_fvgCandidates), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_DISPLAYED", 12, 56, "Displayed FVGs: " + IntegerToString(g_fvgDisplayed), InpTextColor);
 }
 
 void AddFVG(const BasicFVG &fvg)
@@ -156,6 +197,8 @@ void TrimFVGs()
 void ScanFVGs(const int rates_total, const datetime &time[], const double &high[], const double &low[], const double &close[])
 {
    ArrayResize(g_fvgs, 0);
+   g_fvgCandidates = 0;
+   g_fvgDisplayed = 0;
 
    int maxBars = MathMin(InpMaxBarsToScan, rates_total - 3);
    int rectangleBars = MathMax(1, InpRectangleLengthBars);
@@ -182,6 +225,8 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
       if(direction == 0 || !FVGSizeOk(top, bottom))
          continue;
 
+      g_fvgCandidates++;
+
       bool invalidated = IsInvalidatedAfter(i, top, bottom, close);
       if(invalidated && !InpShowInvalidatedFVGs)
          continue;
@@ -200,6 +245,7 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
 
       AddFVG(fvg);
       TrimFVGs();
+      g_fvgDisplayed = ArraySize(g_fvgs);
    }
 }
 
@@ -212,6 +258,8 @@ void DrawFVG(const BasicFVG &fvg)
    double labelPrice = (fvg.top + fvg.bottom) / 2.0;
 
    DrawRectangle(id + "_RECT", fvg.startTime, fvg.endTime, fvg.top, fvg.bottom, rectColor);
+   DrawLine(id + "_TOP", fvg.startTime, fvg.endTime, fvg.top, rectColor);
+   DrawLine(id + "_BOTTOM", fvg.startTime, fvg.endTime, fvg.bottom, rectColor);
 
    if(InpShowStatusText)
       DrawText(id + "_TEXT", fvg.labelTime, labelPrice, directionText + " FVG - " + statusText, InpTextColor);
@@ -223,6 +271,9 @@ void DrawAllFVGs()
 
    for(int i = 0; i < ArraySize(g_fvgs); i++)
       DrawFVG(g_fvgs[i]);
+
+   if(InpShowDiagnosticsPanel)
+      DrawDiagnosticsPanel();
 }
 
 int OnInit()
