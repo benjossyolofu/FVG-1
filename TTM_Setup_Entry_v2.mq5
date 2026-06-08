@@ -8,10 +8,10 @@
 #define DIR_BULL 1
 #define DIR_BEAR -1
 
-input int MaxBarsToScan = 500;
-input int MaxSetupsToDisplay = 5;
+input int MaxBarsToScan = 3000;
+input int MaxSetupsToDisplay = 20;
 input int MinFvgSizePoints = 1;
-input int RectangleLengthBars = 40;
+input int RectangleLengthBars = 200;
 input int SwingStrength = 2;
 input int MinLiquidityCandles = 2;
 input bool InvalidateOnCloseInside = true;
@@ -27,7 +27,8 @@ input color BullishFvgColor = clrLimeGreen;
 input color BearishFvgColor = clrRed;
 input color LiquidityColor = clrDodgerBlue;
 input color BosColor = clrGold;
-input color EntryColor = clrAqua;
+input color BullishEntryColor = clrDodgerBlue;
+input color BearishEntryColor = clrRed;
 input color TextColor = clrWhite;
 
 struct TTMSetup
@@ -484,8 +485,9 @@ void DrawSetup(const TTMSetup &setup)
 
    if(setup.entryTriggered)
    {
-      DrawArrow(id + "_ENTRY_ARROW", setup.entryTime, setup.entryPrice, setup.direction, EntryColor);
-      DrawText(id + "_ENTRY_TEXT", setup.entryTime, setup.entryPrice, directionText + " Entry", EntryColor);
+      color entryColor = setup.direction == DIR_BULL ? BullishEntryColor : BearishEntryColor;
+      DrawArrow(id + "_ENTRY_ARROW", setup.entryTime, setup.entryPrice, setup.direction, entryColor);
+      DrawText(id + "_ENTRY_TEXT", setup.entryTime, setup.entryPrice, directionText + " Entry", entryColor);
    }
 }
 
