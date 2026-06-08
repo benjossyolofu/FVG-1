@@ -26,9 +26,9 @@ enum ENUM_TTM_DISPLAY_MODE
 input int InpMaxBarsToScan = 1000;
 input bool InpShowBullishSetups = true;
 input bool InpShowBearishSetups = true;
-input int InpMinFVGSizePoints = 10;
+input int InpMinFVGSizePoints = 1;
 input bool InpStrictCloseInsideInvalidatesFVG = true;
-input bool InpRequireImpulseCandle = true;
+input bool InpRequireImpulseCandle = false;
 input double InpMinImpulseBodyPercent = 50.0;
 input int InpSwingDepth = 2;
 input int InpMinBarsAfterFVGForLiquidity = 2;
@@ -59,7 +59,7 @@ input bool InpShowLiquidityLines = true;
 input bool InpShowBoSLabels = true;
 input bool InpShowEntryMarkers = true;
 input bool InpShowLatestSetupOnly = false;
-input ENUM_TTM_DISPLAY_MODE InpHistoricalDisplayMode = DISPLAY_BOS_CONFIRMED;
+input ENUM_TTM_DISPLAY_MODE InpHistoricalDisplayMode = DISPLAY_FVG_ONLY;
 input bool InpShowDiagnosticsPanel = true;
 input int InpMaxDisplayedSetups = 20;
 input int InpMaxStoredSetups = 100;
@@ -434,10 +434,10 @@ void DrawRectangle(const string name, const datetime t1, const datetime t2, cons
       ObjectMove(0, name, 1, t2, bottom);
    }
 
-   ObjectSetInteger(0, name, OBJPROP_COLOR, ColorToARGB(clr, 55));
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_FILL, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
    SetObjectCommon(name);
 }
 
@@ -485,6 +485,17 @@ void DrawLabel(const string name, const int x, const int y, const string text, c
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 9);
    ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
    SetObjectCommon(name);
+}
+
+void DrawDiagnosticsPanel()
+{
+   DrawLabel(PREFIX + "DIAG_TITLE", 12, 20, "TTM FVG Liquidity BoS", InpTextColor);
+   DrawLabel(PREFIX + "DIAG_FVG", 12, 38, "FVG candidates: " + IntegerToString(g_fvgCandidates), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_FILTERED", 12, 56, "FVG after filters: " + IntegerToString(g_fvgAfterFilters), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_LIQ", 12, 74, "Liquidity matches: " + IntegerToString(g_liquidityMatches), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_BOS", 12, 92, "BoS matches: " + IntegerToString(g_bosMatches), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_ENTRY", 12, 110, "Entry matches: " + IntegerToString(g_entryMatches), InpTextColor);
+   DrawLabel(PREFIX + "DIAG_STORED", 12, 128, "Stored setups: " + IntegerToString(ArraySize(g_setups)), InpTextColor);
 }
 
 void DrawArrow(const string name, const datetime t, const double price, const int direction)
@@ -636,16 +647,7 @@ void RedrawVisibleSetups(const datetime lastTime, const bool cleanFirst)
    }
 
    if(InpShowDiagnosticsPanel)
-   {
-      string text = "TTM FVG Liquidity BoS" +
-                    "\nFVG candidates: " + IntegerToString(g_fvgCandidates) +
-                    "\nFVG after filters: " + IntegerToString(g_fvgAfterFilters) +
-                    "\nLiquidity matches: " + IntegerToString(g_liquidityMatches) +
-                    "\nBoS matches: " + IntegerToString(g_bosMatches) +
-                    "\nEntry matches: " + IntegerToString(g_entryMatches) +
-                    "\nStored setups: " + IntegerToString(ArraySize(g_setups));
-      DrawLabel(PREFIX + "DIAGNOSTICS", 12, 20, text, InpTextColor);
-   }
+      DrawDiagnosticsPanel();
 }
 
 void ScanSetups(const int rates_total, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[])
