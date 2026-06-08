@@ -1,0 +1,7 @@
+*.ex5
+*.log
+*.tmp
+*.bak
+*.zip
+.DS_Store
+Thumbs.db
