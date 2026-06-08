@@ -205,13 +205,13 @@ int CountNearbyClusterFVGs(const int currentShift, const int direction, const do
       double nearbyTop = 0.0;
       double nearbyBottom = 0.0;
 
-      if(IsBullishFVG(high[leftIndex], low[rightIndex]))
+      if(low[rightIndex] > high[leftIndex])
       {
          nearbyDirection = DIR_BULL;
          nearbyTop = low[rightIndex];
          nearbyBottom = high[leftIndex];
       }
-      else if(IsBearishFVG(low[leftIndex], high[rightIndex]))
+      else if(high[rightIndex] < low[leftIndex])
       {
          nearbyDirection = DIR_BEAR;
          nearbyTop = low[leftIndex];
