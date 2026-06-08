@@ -11,14 +11,15 @@
 input int InpMaxBarsToScan = 1000;
 input int InpMaxFVGsToDisplay = 15;
 input int InpMinFVGSizePoints = 1;
-input int InpRectangleLengthBars = 12;
+input int InpRectangleLengthBars = 40;
+input int InpMinVisualHeightPoints = 80;
 input bool InpExtendUntouchedToCurrentBar = false;
 input bool InpShowInvalidatedFVGs = true;
 input bool InpShowStatusText = true;
 input bool InpShowDiagnosticsPanel = true;
 input bool InpInvalidateOnCloseInside = true;
-input color InpBullishFVGColor = clrMediumSeaGreen;
-input color InpBearishFVGColor = clrTomato;
+input color InpBullishFVGColor = clrDeepSkyBlue;
+input color InpBearishFVGColor = clrMagenta;
 input color InpInvalidatedFVGColor = clrDimGray;
 input color InpTextColor = clrWhite;
 
@@ -30,6 +31,8 @@ struct BasicFVG
    datetime labelTime;
    double top;
    double bottom;
+   double displayTop;
+   double displayBottom;
    bool invalidated;
 };
 
@@ -118,7 +121,7 @@ void DrawRectangle(const string name, const datetime t1, const datetime t2, cons
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_FILL, true);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, 2);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 3);
    SetObjectCommon(name);
 }
 
@@ -138,6 +141,19 @@ void DrawLine(const string name, const datetime t1, const datetime t2, const dou
    SetObjectCommon(name);
 }
 
+void DisplayBounds(const double top, const double bottom, double &displayTop, double &displayBottom)
+{
+   displayTop = top;
+   displayBottom = bottom;
+
+   double minHeight = InpMinVisualHeightPoints * PointValue();
+   if(minHeight <= 0.0 || top - bottom >= minHeight)
+      return;
+
+   double middle = (top + bottom) / 2.0;
+   displayTop = middle + minHeight / 2.0;
+   displayBottom = middle - minHeight / 2.0;
+}
 void DrawText(const string name, const datetime t, const double price, const string text, const color clr)
 {
    if(ObjectFind(0, name) < 0)
@@ -241,6 +257,7 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
       fvg.labelTime = time[labelIndex];
       fvg.top = top;
       fvg.bottom = bottom;
+      DisplayBounds(top, bottom, fvg.displayTop, fvg.displayBottom);
       fvg.invalidated = invalidated;
 
       AddFVG(fvg);
@@ -255,9 +272,9 @@ void DrawFVG(const BasicFVG &fvg)
    color rectColor = fvg.invalidated ? InpInvalidatedFVGColor : (fvg.direction == DIR_BULL ? InpBullishFVGColor : InpBearishFVGColor);
    string directionText = fvg.direction == DIR_BULL ? "Bullish" : "Bearish";
    string statusText = fvg.invalidated ? "Invalidated" : "Untouched";
-   double labelPrice = (fvg.top + fvg.bottom) / 2.0;
+   double labelPrice = (fvg.displayTop + fvg.displayBottom) / 2.0;
 
-   DrawRectangle(id + "_RECT", fvg.startTime, fvg.endTime, fvg.top, fvg.bottom, rectColor);
+   DrawRectangle(id + "_RECT", fvg.startTime, fvg.endTime, fvg.displayTop, fvg.displayBottom, rectColor);
    DrawLine(id + "_TOP", fvg.startTime, fvg.endTime, fvg.top, rectColor);
    DrawLine(id + "_BOTTOM", fvg.startTime, fvg.endTime, fvg.bottom, rectColor);
 
