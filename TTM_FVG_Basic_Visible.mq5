@@ -7,15 +7,22 @@
 #define PREFIX "TTM_FVG_VISIBLE_"
 #define DIR_BULL 1
 #define DIR_BEAR -1
+#define GRADE_C 1
+#define GRADE_B 2
+#define GRADE_A 3
 
 input int MaxBarsToScan = 1000;
 input int MaxFvgToDisplay = 8;
 input int MinFvgSizePoints = 1;
+input int MinGradeToShow = 1;
+input int GradeA_MinPoints = 150;
+input int GradeB_MinPoints = 60;
 input int RectangleLengthBars = 40;
 input int MinVisualHeightPoints = 80;
 input bool ExtendUntouchedToCurrentBar = false;
 input bool ShowInvalidatedFvg = false;
 input bool ShowStatusText = true;
+input bool ShowFvgGrade = true;
 input bool ShowDiagnosticsPanel = true;
 input bool InvalidateOnCloseInside = true;
 input color BullishFvgColor = clrLimeGreen;
@@ -33,6 +40,8 @@ struct BasicFVG
    double bottom;
    double displayTop;
    double displayBottom;
+   double sizePoints;
+   int grade;
    bool invalidated;
 };
 
@@ -42,6 +51,9 @@ int g_fvgDisplayed = 0;
 int g_objectsCreated = 0;
 int g_objectCreateFailures = 0;
 int g_lastObjectError = 0;
+int g_gradeA = 0;
+int g_gradeB = 0;
+int g_gradeC = 0;
 
 int IndexFromNewest(const int barsAgo, const int rates_total, const datetime &time[])
 {
@@ -72,6 +84,30 @@ string FVGId(const BasicFVG &fvg)
 bool FVGSizeOk(const double top, const double bottom)
 {
    return (top - bottom) >= MinFvgSizePoints * PointValue();
+}
+
+int CalculateFVGGrade(const double top, const double bottom)
+{
+   double sizePoints = (top - bottom) / PointValue();
+
+   if(sizePoints >= GradeA_MinPoints)
+      return GRADE_A;
+
+   if(sizePoints >= GradeB_MinPoints)
+      return GRADE_B;
+
+   return GRADE_C;
+}
+
+string GradeText(const int grade)
+{
+   if(grade >= GRADE_A)
+      return "A";
+
+   if(grade == GRADE_B)
+      return "B";
+
+   return "C";
 }
 
 bool CloseInvalidatesFVG(const double closePrice, const double top, const double bottom)
@@ -225,9 +261,10 @@ void DrawDiagnosticsPanel()
    DrawLabel(PREFIX + "DIAG_TITLE", 12, 20, "TTM FVG Basic Visible", TextColor);
    DrawLabel(PREFIX + "DIAG_CANDIDATES", 12, 38, "FVG candidates: " + IntegerToString(g_fvgCandidates), TextColor);
    DrawLabel(PREFIX + "DIAG_DISPLAYED", 12, 56, "Displayed FVGs: " + IntegerToString(g_fvgDisplayed), TextColor);
-   DrawLabel(PREFIX + "DIAG_OBJECTS", 12, 74, "Objects created: " + IntegerToString(g_objectsCreated), TextColor);
-   DrawLabel(PREFIX + "DIAG_FAILURES", 12, 92, "Create failures: " + IntegerToString(g_objectCreateFailures), TextColor);
-   DrawLabel(PREFIX + "DIAG_ERROR", 12, 110, "Last object error: " + IntegerToString(g_lastObjectError), TextColor);
+   DrawLabel(PREFIX + "DIAG_GRADES", 12, 74, "Grades A/B/C: " + IntegerToString(g_gradeA) + "/" + IntegerToString(g_gradeB) + "/" + IntegerToString(g_gradeC), TextColor);
+   DrawLabel(PREFIX + "DIAG_OBJECTS", 12, 92, "Objects created: " + IntegerToString(g_objectsCreated), TextColor);
+   DrawLabel(PREFIX + "DIAG_FAILURES", 12, 110, "Create failures: " + IntegerToString(g_objectCreateFailures), TextColor);
+   DrawLabel(PREFIX + "DIAG_ERROR", 12, 128, "Last object error: " + IntegerToString(g_lastObjectError), TextColor);
 }
 
 void AddFVG(const BasicFVG &fvg)
@@ -255,6 +292,9 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
    ArrayResize(g_fvgs, 0);
    g_fvgCandidates = 0;
    g_fvgDisplayed = 0;
+   g_gradeA = 0;
+   g_gradeB = 0;
+   g_gradeC = 0;
 
    int maxShift = MathMin(MaxBarsToScan, rates_total - 3);
    int rectangleBars = MathMax(1, RectangleLengthBars);
@@ -284,6 +324,10 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
          continue;
 
       g_fvgCandidates++;
+      int grade = CalculateFVGGrade(top, bottom);
+
+      if(grade < MinGradeToShow)
+         continue;
 
       bool invalidated = false;
       for(int newerShift = shift - 1; newerShift >= 1; newerShift--)
@@ -310,11 +354,20 @@ void ScanFVGs(const int rates_total, const datetime &time[], const double &high[
       fvg.top = top;
       fvg.bottom = bottom;
       DisplayBounds(top, bottom, fvg.displayTop, fvg.displayBottom);
+      fvg.sizePoints = (top - bottom) / PointValue();
+      fvg.grade = grade;
       fvg.invalidated = invalidated;
 
       AddFVG(fvg);
       TrimFVGs();
       g_fvgDisplayed = ArraySize(g_fvgs);
+
+      if(grade >= GRADE_A)
+         g_gradeA++;
+      else if(grade == GRADE_B)
+         g_gradeB++;
+      else
+         g_gradeC++;
    }
 }
 
@@ -324,6 +377,7 @@ void DrawFVG(const BasicFVG &fvg)
    color rectColor = fvg.invalidated ? InvalidatedFvgColor : (fvg.direction == DIR_BULL ? BullishFvgColor : BearishFvgColor);
    string directionText = fvg.direction == DIR_BULL ? "Bullish" : "Bearish";
    string statusText = fvg.invalidated ? "Invalidated" : "Untouched";
+   string gradeText = ShowFvgGrade ? " Grade " + GradeText(fvg.grade) : "";
    double labelPrice = (fvg.displayTop + fvg.displayBottom) / 2.0;
 
    DrawRectangle(id + "_RECT", fvg.startTime, fvg.endTime, fvg.displayTop, fvg.displayBottom, rectColor);
@@ -332,7 +386,7 @@ void DrawFVG(const BasicFVG &fvg)
    DrawMarker(id + "_MARKER", fvg.labelTime, labelPrice, rectColor);
 
    if(ShowStatusText)
-      DrawText(id + "_TEXT", fvg.labelTime, labelPrice, directionText + " FVG - " + statusText, TextColor);
+      DrawText(id + "_TEXT", fvg.labelTime, labelPrice, directionText + " FVG" + gradeText + " - " + statusText, TextColor);
 }
 
 void DrawAllFVGs()
