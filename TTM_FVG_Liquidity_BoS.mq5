@@ -34,6 +34,11 @@ input color InpBearishFVGColor = clrTomato;
 input color InpBullishLineColor = clrDodgerBlue;
 input color InpBearishLineColor = clrOrangeRed;
 input color InpTextColor = clrWhite;
+input bool InpShowFVGZones = true;
+input bool InpShowLiquidityLines = true;
+input bool InpShowBoSLabels = true;
+input bool InpShowEntryMarkers = true;
+input int InpMaxDisplayedSetups = 20;
 
 struct TTMSetup
 {
@@ -403,12 +408,19 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
    color lineColor = setup.direction == DIR_BULL ? InpBullishLineColor : InpBearishLineColor;
    datetime endTime = setup.hasEntry ? setup.entryTime : lastTime;
 
-   DrawRectangle(id + "_FVG", setup.fvgTime, endTime, setup.fvgTop, setup.fvgBottom, zoneColor);
-   DrawTrendLine(id + "_LIQ", setup.liquidityTime, endTime, setup.liquidityPrice, lineColor);
-   DrawText(id + "_LIQ_TXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", InpTextColor);
-   DrawText(id + "_BOS", setup.bosTime, setup.bosPrice, "BoS", InpTextColor);
+   if(InpShowFVGZones)
+      DrawRectangle(id + "_FVG", setup.fvgTime, endTime, setup.fvgTop, setup.fvgBottom, zoneColor);
 
-   if(setup.hasEntry)
+   if(InpShowLiquidityLines)
+   {
+      DrawTrendLine(id + "_LIQ", setup.liquidityTime, endTime, setup.liquidityPrice, lineColor);
+      DrawText(id + "_LIQ_TXT", setup.liquidityTime, setup.liquidityPrice, "Liquidity", InpTextColor);
+   }
+
+   if(InpShowBoSLabels)
+      DrawText(id + "_BOS", setup.bosTime, setup.bosPrice, "BoS", InpTextColor);
+
+   if(setup.hasEntry && InpShowEntryMarkers)
    {
       DrawArrow(id + "_ENTRY", setup.entryTime, setup.entryPrice, setup.direction);
       DrawText(id + "_ENTRY_TXT", setup.entryTime, setup.entryPrice, DirectionText(setup.direction), InpTextColor);
@@ -423,6 +435,15 @@ void DrawSetup(const TTMSetup &setup, const datetime lastTime)
          DrawText(id + "_TP_TXT", setup.entryTime, setup.tpPrice, "TP 1:" + DoubleToString(InpRiskReward, 1), clrLime);
       }
    }
+}
+
+int FirstDisplayedSetupIndex()
+{
+   int total = ArraySize(g_setups);
+   if(InpMaxDisplayedSetups <= 0 || total <= InpMaxDisplayedSetups)
+      return 0;
+
+   return total - InpMaxDisplayedSetups;
 }
 
 void DeleteObjects()
@@ -486,7 +507,6 @@ void ScanSetups(const int rates_total, const datetime &time[], const double &ope
       if(!setup.invalidated)
       {
          AddSetup(setup);
-         DrawSetup(setup, time[1]);
 
          string setupMessage = _Symbol + " " + EnumToString((ENUM_TIMEFRAMES)_Period) + " TTM A+ " + DirectionText(direction) + " setup formed";
          if(InpAlertOnSetupFormed && setup.bosIndex == 1)
@@ -532,6 +552,8 @@ int OnCalculate(const int rates_total,
       DeleteObjects();
       ScanSetups(rates_total, time, open, high, low, close);
       g_lastClosedBarTime = time[1];
+      for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
+         DrawSetup(g_setups[i], time[1]);
       return rates_total;
    }
 
@@ -541,7 +563,7 @@ int OnCalculate(const int rates_total,
       g_lastClosedBarTime = time[1];
    }
 
-   for(int i = 0; i < ArraySize(g_setups); i++)
+   for(int i = FirstDisplayedSetupIndex(); i < ArraySize(g_setups); i++)
       DrawSetup(g_setups[i], time[1]);
 
    return rates_total;
